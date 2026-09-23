@@ -1,0 +1,34 @@
+LOCUS       demo_reference          1076 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  3730.ab1 basecalls with two planted edits.
+ACCESSION   demo_reference
+VERSION     demo_reference
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+     CDS             34..>1074
+                     /note="ORF in this read's own basecalls; runs off the end
+                     of the read"
+                     /transl_table=11
+                     /label="ORF (mCherry-linker-GFP start, as read)"
+ORIGIN
+        1 ttttggcaag aattgagctc tatggccaca accatggtga gcaagggcga ggaggataac
+       61 atggccatca tcaaggagtt catgcgcttc aaggtgcaca tggagggctc cgtgaacggc
+      121 cacgagttcg agatcgaggg cgagggcgag ggccgcccct acgagggcac ccagaccgcc
+      181 aagccgaagg tgaccaaggg tggccccctg cccttcgcct gggacatcct gtcccctcag
+      241 ttcatgtacg gctccaaggc ctacgtgaag caccccgccg acatccccga ctacttgaag
+      301 ctgtccttcc ccgagggctt caagtgggag cgcgtgatga acttcgagga cggcggcgtg
+      361 gtgaccgtga cccaggactc ctccctgcag gacggcgagt tcatctacaa ggtgaagctg
+      421 cgcggacacc aacttcccct ccgacggccc cgtaatgcag aagaagacca tgggctggga
+      481 ggcctcctcc gagcggatgt accccgagga cggcgccctg aagggcgaga tcaagcagag
+      541 gctgaagctg aaggacggcg gccactacga cgctgaggtc aagaccacct acaaggccaa
+      601 gaagcccgtg cagctgcccg gcgcctacaa cgtcaacatc aagttggaca tcacctccca
+      661 caacgaggac tacaccatcg tggaacagta cgaacgcgcc gagggccgcc actccaccgg
+      721 cggcatggac gagctgtaca agggcggcag cggcatggtg agcaagggcg aggagctgtt
+      781 caccggggtg gtgcccatcc tggtcgagct ggacggcgac gtaaacggcc acaagttcag
+      841 cgtgtccggc gagggcgagg gcgatgccac ctacggcaag ctgaccctga agttcatctg
+      901 caccaccggc aagctgcccg tgccctggcc caccctcgtg accaccctga cctacggcgt
+      961 gcagtgcttc agccgctacc ccgaccacat gaagcagcac gacttcttca agtccgccat
+     1021 gcccgaaggc tacgtccagg agcgcaccat cttcttcaag gacgacggca actaca
+//

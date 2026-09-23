@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# macOS
+.DS_Store
+
+# Build output
+build/
+dist/
+*.zip
+
+# Local job/test scratch
+data/*
+!data/.gitkeep
+tests/_out/
+tests/out/
+

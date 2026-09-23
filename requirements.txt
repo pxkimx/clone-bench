@@ -1,0 +1,12 @@
+# Clone Bench — computation + server dependencies. Tested on macOS arm64, python.org Python 3.12.
+# The analysis itself needs only Biopython and numpy (the browser build runs the same core in Pyodide).
+biopython>=1.88
+numpy>=1.26,<3
+reportlab>=4.0            # PDF report
+pillow>=10                # images inside the PDF
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+anthropic>=0.40           # the in-app assistant (optional at run time: it degrades to a message)
+certifi>=2024
+pytest>=8                 # tests/
