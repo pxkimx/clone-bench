@@ -38,6 +38,10 @@ vanilla-JS UI + in-app Claude assistant + PDF report). Owner: Paul (bench biolog
 - Primer design (`core_design.py`) reuses core_primers' `tm_nn`, `buffer_from`, `comp_scan`, `hairpin_scan` and
   `binding_sites` — a designed primer must be judged exactly like a checked one. Circular targets work in a rotated
   `Frame` (`.orig()` maps back). Start-codon sites (NcoI, NdeI) are merged with the ATG; never prepend a whole site.
+- Browser build saving: `savedPut/savedLoad/savedDownload/savedOpen/savedClear` in web/index.html keep whole-tool
+  results (`SAVE_KINDS`) in IndexedDB `clone-bench-web` and a `{app:"Clone Bench",format:1,items}` .json file. The
+  stored copy is taken by `put()` inside `api()`, before the UI mutates the result. Keep new result kinds in step
+  with `SAVE_KINDS` and the list in `api()`.
 - The browser build loads the core modules listed in `make_webapp.CORE`, injected into the page as `window.CB_CORE`.
   Add a new `core_*.py` there (only) — a hand-kept second list in index.html once shipped a module without loading it.
 

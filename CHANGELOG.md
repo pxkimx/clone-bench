@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.1 — 2026-09-24
+- **The browser version now saves your analyses.** Until now everything run in Clone Bench Web was lost when the tab
+  closed. Each construct, primer check, Sanger run, protein and sequence-tools result is now kept in the browser
+  (IndexedDB, on this computer only — nothing is uploaded) and reappears in the sidebar and under "Your analyses"
+  next time, with its map, tables and follow-up tools working as before.
+- **Download a copy / Open a saved file** writes every saved analysis to one `.json` file and reads it back — a
+  backup, since browsers can clear their storage, and the way to move work to another computer. Opening a file
+  skips analyses that are already there.
+- **Clear this browser** removes them all (after a confirmation).
+- If the browser refuses storage (some private windows), the page says so once and Download still works.
+- The desktop app is unchanged: it already saves every analysis in its workspace folder.
+
 ## 0.2.0 — 2026-09-23
 - **New tool: Design primers.** Clone Bench could check primers but not design them. Pick a construct and a feature
   (or a region, or paste a template) and one of three modes. All of them use the Primers tool's buffer and the same

@@ -68,8 +68,8 @@ Myc, Strep-tag II, V5, GST/MBP starts) and protease sites (TEV, HRV 3C, thrombin
 
 ## Browser version
 `webapp/` is the same UI and the same Python core (`server/core*.py`) running inside Pyodide 0.28.3 (Biopython
-1.85), built by `make_webapp.py`. The assistant, the PDF report and saved history need the local server and are
-absent there; the page says so. Serve it with `python -m http.server 8778 --directory webapp`. See `webapp/README.md`.
+1.85), built by `make_webapp.py`. The assistant and the PDF report need the local server and are absent there; the page says so. Analyses are saved
+in the browser (IndexedDB) and can be downloaded to a `.json` file and opened again. Serve it with `python -m http.server 8778 --directory webapp`. See `webapp/README.md`.
 
 ## Layout
 ```

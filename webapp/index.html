@@ -432,6 +432,7 @@ ol.flow .why{margin:0;font-size:13px;line-height:1.55;color:var(--muted);border-
 :root[data-theme="dark"]{--gA:#4ade80;--gC:#60a5fa;--gG:#c9d3d8;--gT:#f87171;--bad:#f27a92;--bad-soft:#3a1820}
 .webnote{margin:18px 0 0;padding:12px 16px;border-radius:14px;border:1px solid color-mix(in srgb,var(--info) 35%,var(--line));background:var(--info-soft);color:var(--ink2);font-size:13.5px}
 .webnote b{color:var(--ink)}
+.webactions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .toolhead{margin:26px 0 6px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
 .toolhead h1{margin:0;font-size:28px;letter-spacing:-.035em;font-weight:640}
 .toolhead .k{font:500 11px var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--accent)}
@@ -858,17 +859,62 @@ def _cb_call(name, js):
 async function api(name,args){
  if(WEB){const py=await pyReady();const fn=py.globals.get("_cb_call");const out=JSON.parse(fn(name,JSON.stringify(args)));fn.destroy&&fn.destroy();
   if(!out.ok)throw new Error(out.error);
-  const r=out.result;if(["construct","primers","sanger","protein","seqtools"].includes(name)){r.item="w"+(++S.memSeq);r._t=Date.now();S.mem[r.item]=r}
+  const r=out.result;if(["construct","primers","sanger","protein","seqtools"].includes(name)){r.item="w"+(++S.memSeq);r._t=Date.now();S.mem[r.item]=r;savedPut(r)}
   return r}
  const r=await fetch("/api/run/"+name,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(args)});
  if(!r.ok){let m;try{m=(await r.json()).detail}catch{m=r.statusText}throw new Error(m||("HTTP "+r.status))}
  return r.json()}
 async function getItem(id){
- if(WEB){if(S.mem[id])return S.mem[id];throw new Error("That analysis is not in this tab any more.")}
+ if(WEB){if(S.mem[id])return S.mem[id];throw new Error("That analysis is not saved in this browser.")}
  const r=await fetch("/api/items/"+encodeURIComponent(id));if(!r.ok)throw new Error((await r.json()).detail||"not found");return r.json()}
 async function listItems(kind){
  if(WEB)return Object.values(S.mem).filter(r=>!kind||r.kind===kind).sort((a,b)=>b._t-a._t).map(r=>({item:r.item,kind:r.kind,name:r.name,t:r._t,summary:r.summary}));
  try{const r=await fetch("/api/items?limit=60"+(kind?"&kind="+kind:""));if(r.ok)return r.json()}catch{}return[]}
+
+/* ------------------------------------------------------------------ browser build: saved analyses
+   The desktop app keeps each whole-tool analysis in its workspace folder. The browser build keeps the same result
+   objects in IndexedDB (this browser on this computer, never uploaded) and can write them to a file the user opens
+   again anywhere. Follow-ups are still computed on demand from the saved `record`, exactly as on the desktop.
+   put() structured-clones synchronously, so the stored copy is the result as the core returned it, before the UI
+   attaches anything to it. */
+const SAVE={db:null,failed:false};
+const SAVE_KINDS=["construct","primers","sanger","protein","seqtools"];
+function idb(){
+ if(!SAVE.db)SAVE.db=new Promise((ok,bad)=>{let q;try{q=indexedDB.open("clone-bench-web",1)}catch(e){bad(e);return}
+  q.onupgradeneeded=()=>q.result.createObjectStore("items",{keyPath:"item"});
+  q.onsuccess=()=>ok(q.result);q.onerror=()=>bad(q.error);q.onblocked=()=>bad(new Error("storage blocked"))});
+ return SAVE.db}
+async function idbRun(mode,fn){const db=await idb();return new Promise((ok,bad)=>{const tx=db.transaction("items",mode);
+ const req=fn(tx.objectStore("items"));tx.oncomplete=()=>ok(req?req.result:undefined);tx.onerror=()=>bad(tx.error);tx.onabort=()=>bad(tx.error||new Error("not saved"))})}
+function savedFailed(e){if(SAVE.failed)return;SAVE.failed=true;
+ toast(/quota/i.test(String(e&&e.name||e))?"This browser is out of storage for Clone Bench — use Download a copy to keep your analyses."
+  :"This browser won't let Clone Bench save (a private window?). Use Download a copy to keep your analyses.")}
+function savedPut(r){if(!WEB)return;idbRun("readwrite",st=>st.put(r)).catch(savedFailed)}
+async function savedLoad(){if(!WEB)return;
+ try{const rows=await idbRun("readonly",st=>st.getAll());
+  for(const r of rows||[]){if(!r||!SAVE_KINDS.includes(r.kind))continue;S.mem[r.item]=r;const n=parseInt(String(r.item).slice(1),10);if(n>S.memSeq)S.memSeq=n}}
+ catch(e){SAVE.failed=true}}
+const plural=n=>`${n} analys${n===1?"is":"es"}`;
+async function savedDownload(){let rows;
+ try{rows=SAVE.failed?null:await idbRun("readonly",st=>st.getAll())}catch{rows=null}
+ if(!rows)rows=JSON.parse(JSON.stringify(Object.values(S.mem),(k,v)=>k.startsWith("__")||(typeof Node!=="undefined"&&v instanceof Node)?undefined:v));
+ rows=rows.filter(r=>SAVE_KINDS.includes(r.kind)).sort((a,b)=>a._t-b._t);
+ if(!rows.length){toast("Nothing to save yet — run an analysis first.");return}
+ const file={app:"Clone Bench",format:1,saved:new Date().toISOString(),items:rows};
+ const a=el("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(file)],{type:"application/json"}));
+ a.download=`clone-bench-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();
+ setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500);toast(`Saved ${plural(rows.length)} to a file.`)}
+async function savedOpen(file){let d;try{d=JSON.parse(await file.text())}catch{d=null}
+ if(!d||d.app!=="Clone Bench"||!Array.isArray(d.items)){toast("That file is not a Clone Bench save file.");return}
+ const have=new Set(Object.values(S.mem).map(x=>`${x.kind}|${x.name}|${x._t}`));let n=0;
+ for(const r of d.items){if(!r||typeof r!=="object"||!SAVE_KINDS.includes(r.kind))continue;
+  const key=`${r.kind}|${r.name}|${r._t}`;if(have.has(key))continue;have.add(key);
+  r.item="w"+(++S.memSeq);if(!r._t)r._t=Date.now();S.mem[r.item]=r;savedPut(r);n++}
+ renderRecent();sideRecent();toast(n?`Opened ${plural(n)} from the file.`:"Everything in that file is already here.")}
+async function savedClear(){const n=Object.keys(S.mem).length;if(!n){toast("There is nothing saved in this browser.");return}
+ if(!confirm(`Remove all ${plural(n)} saved in this browser? This cannot be undone — download a copy first if you may want them.`))return;
+ S.mem={};S.memSeq=0;S.item=null;S.result=null;try{await idbRun("readwrite",st=>st.clear())}catch{}
+ history.replaceState(null,"","#");renderRecent();sideRecent();show("home");toast("Cleared.")}
 
 /* files → {name, b64} */
 function b64(buf){const u=new Uint8Array(buf);let s="";for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s)}
@@ -904,7 +950,7 @@ async function renderRecent(){const rows=await listItems();$("#recentWrap").hidd
  $("#recentCount").textContent=rows.length>8?`· ${rows.length} total`:"";$("#recent").innerHTML="";
  rows.slice(0,8).forEach(x=>{const b=el("button","ex",`<span class="k">${esc(KIND[x.kind]||x.kind)}</span><b>${esc(x.name)}</b><small>${esc(subOf(x))}</small><small class="mono" style="opacity:.55">${esc(x.item)} · ${esc(whenLabel(x.t))}</small>`);
   b.style.maxWidth="290px";b.onclick=()=>loadItem(x.item);$("#recent").appendChild(b)})}
-async function sideRecent(){const rows=(await listItems()).slice(0,6);$("#sideRecentWrap").hidden=!rows.length;$("#recentLabel").textContent=WEB?"This session":"Recent";
+async function sideRecent(){const rows=(await listItems()).slice(0,6);$("#sideRecentWrap").hidden=!rows.length;$("#recentLabel").textContent=WEB?"Saved in this browser":"Recent";
  $("#sideRecent").innerHTML=rows.map(x=>`<a href="#item=${esc(x.item)}" data-item="${esc(x.item)}" title="${esc(x.name)}"><i>${KICON[x.kind]||"·"}</i><span>${esc(x.name)}<small>${esc(KIND[x.kind]||"")} · ${esc(whenLabel(x.t))}</small></span></a>`).join("");
  $$("#sideRecent a").forEach(a=>a.onclick=e=>{e.preventDefault();loadItem(a.dataset.item)})}
 async function loadItem(id){try{const r=await getItem(id);openResult(r)}catch(e){toast(e.message);show("home")}}
@@ -1575,10 +1621,13 @@ $("#chatSend").onclick=send;$("#chatIn").addEventListener("keydown",e=>{if(e.key
 /* ------------------------------------------------------------------ boot */
 if(WEB){$$(".localonly").forEach(x=>x.hidden=true);$("#chat").hidden=true;$("#appWrap").hidden=true;
  $("#footNote").textContent="Browser build · computed in this tab";$(".hero .eyebrow").textContent="● Biopython · in your browser · for the bench";
- $("#webNote").hidden=false;$("#webNote").innerHTML=`<b>Browser version.</b> Everything here runs inside this tab with Biopython (via Pyodide) — nothing is uploaded. The <b>assistant</b>, the <b>PDF report</b> and <b>saved history</b> are only in the desktop app; analyses you run here last until you close the tab. The first analysis downloads Python (~20 MB, cached afterwards).`}
+ $("#webNote").hidden=false;$("#webNote").innerHTML=`<b>Browser version.</b> Everything here runs inside this tab with Biopython (via Pyodide) — nothing is uploaded. Your analyses are <b>saved in this browser</b> on this computer and reappear next time; download a copy to keep a backup or move them to another computer. The <b>assistant</b> and the <b>PDF report</b> are only in the desktop app. The first analysis downloads Python (~20 MB, cached afterwards).
+  <div class="webactions"><button class="btn ghost sm" id="saveDl" type="button">Download a copy</button><button class="btn ghost sm" id="saveOpen" type="button">Open a saved file</button><button class="btn ghost sm" id="saveClear" type="button">Clear this browser</button><input type="file" id="saveFile" accept=".json,application/json" hidden></div>`;
+ $("#saveDl").onclick=savedDownload;$("#saveClear").onclick=savedClear;$("#saveOpen").onclick=()=>$("#saveFile").click();
+ $("#saveFile").onchange=async e=>{const f=e.target.files[0];e.target.value="";if(f)await savedOpen(f)}}
 setChips(null);
 (async()=>{if(!WEB){try{const s=await (await fetch("/api/settings")).json();$("#appVersion").textContent="v"+s.version;$("#bpVersion").textContent=s.biopython}catch{}}
- else{$("#appVersion").textContent="web";$("#bpVersion").textContent="(Pyodide)"}
+ else{$("#appVersion").textContent="web";$("#bpVersion").textContent="(Pyodide)";await savedLoad()}
  renderRecent();sideRecent();route()})();
 function route(){const h=location.hash;const m=h.match(/item=([\w-]+)/),t=h.match(/tool=(\w+)/);
  if(m&&(!WEB||S.mem[m[1]]))loadItem(m[1]);else if(t&&["construct","primers","sanger","protein","seqtools"].includes(t[1]))goTool(t[1]);else if(!/^#(summary|map|features|restriction|digest|orfs|methods|read\d|coverage|props|a280|hydro|tags|structure|pair|pcr|rc|tr|motif|seguid)$/.test(h))show("home")}

@@ -11,9 +11,11 @@ page and handed to Python in the tab.
 Rebuild after changing the app: `.venv/bin/python make_webapp.py` from `source/`.
 
 ## What is absent, and why
-The **assistant**, the **PDF report** and **saved history** need the local server (an API key kept on your Mac, a PDF
-library, a workspace folder), so this build hides them and says so on the home page. Analyses last until the tab is
-closed. Every tool itself — Construct, Primers, Sanger, Protein, Sequence tools — runs here with the same code.
+The **assistant** and the **PDF report** need the local server (an API key kept on your Mac, a PDF library), so this
+build hides them and says so on the home page. **Saved analyses** work differently from the desktop app: instead of a
+workspace folder, each whole-tool result is kept in the browser's IndexedDB (database `clone-bench-web`, this browser
+on this computer only), and the home page can download all of them to one `.json` file and open such a file again.
+Every tool itself — Construct, Primers, Sanger, Protein, Sequence tools — runs here with the same code.
 
 Biopython 1.85 differs from 1.88 in amino-acid composition (`amino_acids_percent` vs the deprecated
 `get_amino_acids_percent()`, which returns fractions); `compat_aa_percent` in `py/core_protein.py` handles both, so the
