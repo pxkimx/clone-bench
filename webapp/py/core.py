@@ -122,6 +122,7 @@ def api(name: str, args: dict | None = None) -> dict:
         "sanger": ("core_sanger", "sanger"),
         "protein": ("core_protein", "protein"),
         "seqtools": ("core_seq", "seqtools"),
+        "design": ("core_design", "design"),
         # interactive follow-ups on a loaded construct
         "digest": ("core_seq", "digest_api"),
         "enzymes": ("core_seq", "enzymes_api"),

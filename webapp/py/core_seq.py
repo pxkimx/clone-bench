@@ -148,7 +148,15 @@ def parse_sequence_file(f: dict, circular=None) -> tuple[SeqRecord, str, list]:
     if len(recs) > 1:
         notes.append(("info", f"{name} holds {len(recs)} records; only the first ({esc(recs[0].id)}) was loaded."))
     rec = recs[0]
-    s, n2 = normalize_dna(str(rec.seq), name)
+    try:
+        raw = str(rec.seq)
+    except UnicodeDecodeError:
+        # Biopython keeps sequence as bytes and decodes it as ASCII: a curly quote, Greek letter or other symbol
+        # pasted in from Word or a PDF crashed the read instead of being named
+        odd = sorted({c for c in bytes(rec.seq).decode("utf-8", "replace") if ord(c) > 127})[:6]
+        raise UserFacingError(f"{name}: the sequence contains characters that are not DNA letters ({' '.join(odd)}) — "
+                              "usually from copying out of Word or a PDF. Paste it as plain text, or remove them.")
+    s, n2 = normalize_dna(raw, name)
     if s != str(rec.seq):
         if len(s) != len(rec) and rec.features:
             raise UserFacingError(f"{name}: the sequence contains gap characters and has annotated features, whose "
@@ -379,11 +387,17 @@ _BATCH = None
 _INFO = {}
 
 
+# Commercially available, but they cut only DNA carrying 5-methyl- or 5-hydroxymethylcytosine (AbaSI needs
+# glucosylated 5hmC). A plasmid prep has none, so they never cut it — yet searched as plain sequence patterns
+# they "cut" at nearly every C (AbaSI's site is one base) and filled the enzyme table with nonsense.
+MODIFICATION_DEPENDENT = {"AbaSI", "FspEI", "LpnPI", "MspJI", "SgeI"}
+
+
 def _batch():
     global _BATCH
     from Bio.Restriction import CommOnly, RestrictionBatch
     if _BATCH is None:
-        _BATCH = RestrictionBatch(list(CommOnly))
+        _BATCH = RestrictionBatch([e for e in CommOnly if str(e) not in MODIFICATION_DEPENDENT])
     return _BATCH
 
 
@@ -1078,7 +1092,8 @@ def construct(args: dict) -> dict:
     R.section("restriction", "Bio.Restriction", "Restriction analysis",
               "Every commercially available enzyme in REBASE (Biopython <code>CommOnly</code>) searched with "
               f"<code>Analysis(..., linear={not circ})</code>. <b>Cut positions are the 1-based position of the first base "
-              "after the cut on the top strand</b> (Biopython's convention).")
+              "after the cut on the top strand</b> (Biopython's convention). Left out: AbaSI, FspEI, LpnPI, MspJI and SgeI, which "
+              "cut only methylated or hydroxymethylated DNA and so never cut a plasmid prep.")
     R.widget("enzymes", "enzymes", "Enzymes that cut", {"rows": rows, "noncutters": sorted([k for k, v in mapping.items() if not v], key=str.lower),
                                                          "n_searched": len(mapping)},
              how=("Filter to single or double cutters, to enzymes that cut once outside the selected feature "
@@ -1132,7 +1147,8 @@ def construct(args: dict) -> dict:
                            "translated with <code>Seq.translate</code> using its /transl_table (default 11) and compared residue by "
                            "residue with /translation.")
     R.method("Restriction analysis", "<code>Bio.Restriction.Analysis</code> with the REBASE commercially available set "
-                                     f"(<code>CommOnly</code>, {len(mapping)} enzymes), linear={not circ}. Cut positions: 1-based "
+                                     f"(<code>CommOnly</code> without the five modification-dependent enzymes, {len(mapping)} enzymes), "
+                                     f"linear={not circ}. Cut positions: 1-based "
                                      "first base after the top-strand cut. REBASE: Roberts et al., Nucleic Acids Res 2023.")
     R.method("Virtual gel", "Fragment sizes from the cut positions; migration drawn log-linear in size within the resolvable "
                             "range for the agarose percentage — an illustration, not a calibrated model.")

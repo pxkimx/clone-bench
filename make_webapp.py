@@ -16,11 +16,12 @@ from __future__ import annotations
 import ast
 import shutil
 import sys
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT / "webapp"
-CORE = ["core.py", "core_seq.py", "core_primers.py", "core_sanger.py", "core_protein.py"]
+CORE = ["core.py", "core_seq.py", "core_primers.py", "core_sanger.py", "core_protein.py", "core_design.py"]
 EXAMPLES = ["pBAD30.gb", "addgene-plasmid-39296-sequence-49545.gbk", "pFA-KanMX4.dna", "3730.ab1", "310.ab1",
             "demo_reference.gb", "demo_reference.fasta", "README.md"]
 ALLOWED_TOP = {"Bio", "numpy", "__future__"}
@@ -54,7 +55,8 @@ def main():
     for f in EXAMPLES:
         shutil.copy2(ROOT / "examples" / f, OUT / "examples" / f)
     html = (ROOT / "web" / "index.html").read_text()
-    flag = "<script>window.CB_WEB = true;  /* browser build: api() runs the Python core in Pyodide */</script>\n"
+    flag = ("<script>window.CB_WEB = true;  /* browser build: api() runs the Python core in Pyodide */\n"
+            f"window.CB_CORE = {json.dumps(CORE)};</script>\n")
     marker = "<meta charset=\"utf-8\">\n"
     assert marker in html, "web/index.html changed its <head>; update make_webapp.py"
     html = html.replace(marker, marker + flag, 1)

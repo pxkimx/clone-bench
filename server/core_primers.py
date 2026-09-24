@@ -43,7 +43,14 @@ def parse_primers(text: str) -> list:
             out.append({"name": line[1:].strip() or f"P{len(out) + 1}", "raw": ""})
             continue
         parts = re.split(r"[\t,;]+|\s{1,}", line)
-        if len(parts) >= 2 and not re.fullmatch(r"[ACGTUacgtuRYSWKMBDHVNryswkmbdhvn\-]+", parts[0]):
+        # A first word is a name unless it could only be sequence. "R ACGT…" (R is also an IUPAC code) and "KanR TTAG…"
+        # (every letter of KanR is one) are how people name primers; read as sequence they glued extra "bases" onto
+        # the 5′ end. Sequence is written in one case, so a mixed-case word, or one of three letters or fewer ahead of
+        # a real sequence, is a name.
+        first = parts[0]
+        named = len(parts) >= 2 and len("".join(parts[1:])) >= 10 and (
+            len(first) <= 3 or not (first.isupper() or first.islower()))
+        if named or (len(parts) >= 2 and not re.fullmatch(r"[ACGTUacgtuRYSWKMBDHVNryswkmbdhvn\-]+", first)):
             name, seq = parts[0], "".join(parts[1:])
         elif len(parts) >= 2 and all(re.fullmatch(r"[ACGTUacgtuRYSWKMBDHVNryswkmbdhvn]+", p) for p in parts):
             name, seq = None, "".join(parts)
@@ -93,6 +100,12 @@ def buffer_from(args: dict) -> dict:
         b["why"] = "Your own buffer values." + (" " + base["why"] if preset == "hifi" else "")
     if b["Na"] + b["K"] + b["Tris"] + b["Mg"] <= 0:
         raise UserFacingError("The buffer has no salt at all (Na⁺, K⁺, Tris and Mg²⁺ are all 0). Tm is undefined without cations.")
+    if b["Na"] + b["K"] + b["Tris"] <= 0 and b["Mg"] <= b["dNTPs"]:
+        # dNTPs bind Mg²⁺ one to one, so with no monovalent salt nothing is left to stabilise the duplex and the
+        # salt correction divides by zero (Biopython raised "Total ion concentration of zero")
+        raise UserFacingError(f"All the Mg²⁺ ({b['Mg']:g} mM) is taken up by the dNTPs ({b['dNTPs']:g} mM total), and there is "
+                              "no Na⁺, K⁺ or Tris — so no free cations and no defined Tm. PCR needs Mg²⁺ above the total "
+                              "dNTP concentration (typically 1.5–2 mM Mg²⁺ with 0.8 mM total dNTPs).")
     if b["primer_nM"] <= 0:
         raise UserFacingError("Primer concentration must be above 0 nM.")
     if b["DMSO"] > 20:
@@ -422,6 +435,10 @@ def primers(args: dict) -> dict:
     R.tile(b["label"], "buffer")
     n_warn = sum(1 for r in rows if any(l == "warn" for l, _ in r["flags"]))
     R.tile(n_warn, "primers with a CHECK")
+    if b["Mg"] <= b["dNTPs"]:
+        R.flag("warn", f"The buffer has {b['Mg']:g} mM Mg²⁺ and {b['dNTPs']:g} mM total dNTPs. dNTPs bind Mg²⁺ one to one, so "
+                       "there is no free Mg²⁺ left for the polymerase and the PCR is unlikely to work; the Tm shown assumes "
+                       "the monovalent salt alone. Is the dNTP value per nucleotide rather than total (0.2 mM each = 0.8 mM)?")
     for r in rows:
         for lvl, t in r["flags"]:
             if lvl in ("warn", "info"):

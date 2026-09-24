@@ -12,7 +12,7 @@ vanilla-JS UI + in-app Claude assistant + PDF report). Owner: Paul (bench biolog
 - The UI calls exactly one function, `api(name, args)` in `web/index.html`: locally a POST to `/api/run/<name>`; in the
   browser build (`window.CB_WEB`) the same core inside Pyodide. Never add a UI feature that bypasses `api()` for
   computation — it would silently break the web build.
-- `server/app.py` saves the five whole-tool analyses (construct, primers, sanger, protein, seqtools) as workspace
+- `server/app.py` saves the whole-tool analyses (construct, primers, design, sanger, protein, seqtools) as workspace
   items under `CB_HOME/work/<id>/` (inputs + request.json + result.json). Follow-ups (digest, enzymes, orfs,
   suggest_digest, export, translate_feature) are computed on demand from the item's `record` and not saved.
 - Result format (`core.Result`): tiles, flags (ok/warn/info), sections of items — `fig` (drawn in the browser by
@@ -34,6 +34,12 @@ vanilla-JS UI + in-app Claude assistant + PDF report). Owner: Paul (bench biolog
   `amino_acids_percent` property; its `get_amino_acids_percent()` returns fractions. Test both in tests/.
 - Honesty: dimers/hairpins are a heuristic (say so), vendor Tm differ, gel is illustrative, Sanger diffs at Q < 20 are
   "probably a basecall error", the demo reference is labelled as planted. Don't add a number without its caveat.
+
+- Primer design (`core_design.py`) reuses core_primers' `tm_nn`, `buffer_from`, `comp_scan`, `hairpin_scan` and
+  `binding_sites` — a designed primer must be judged exactly like a checked one. Circular targets work in a rotated
+  `Frame` (`.orig()` maps back). Start-codon sites (NcoI, NdeI) are merged with the ATG; never prepend a whole site.
+- The browser build loads the core modules listed in `make_webapp.CORE`, injected into the page as `window.CB_CORE`.
+  Add a new `core_*.py` there (only) — a hand-kept second list in index.html once shipped a module without loading it.
 
 ## Run / build / test
 - `./dev.sh` (port 8768, auto-reload) · `python -m server.selftest` · `python -m pytest tests -q`

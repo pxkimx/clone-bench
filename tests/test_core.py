@@ -284,3 +284,105 @@ def test_genbank_export_round_trip(tmp_path):
     rec = SeqIO.read(p, "genbank")
     assert str(rec.seq) == g["record"]["seq"] and rec.annotations["topology"] == "circular"
     assert rec.annotations["molecule_type"] == "DNA"
+
+
+def test_primer_names_that_look_like_bases():
+    """'R ACGT…' and 'KanR TTAG…' are names: every letter of R and KanR is an IUPAC code, and read as sequence they
+    glued degenerate 'bases' onto the 5′ end (found by randomised testing: the product came out 1–4 bp long)."""
+    from server.core_primers import parse_primers
+    got = [(p["name"], p["raw"]) for p in parse_primers(
+        "F ACGTACGTACGTAGCTAG\nR TTGCATGCATGCAAGCTT\nKanR TTAGAAAAACTCATCGAGCATC\nACGTACGTAC GTACGTACGT")]
+    assert got == [("F", "ACGTACGTACGTAGCTAG"), ("R", "TTGCATGCATGCAAGCTT"),
+                   ("KanR", "TTAGAAAAACTCATCGAGCATC"), ("P4", "ACGTACGTACGTACGTACGT")]
+
+
+def test_modification_dependent_enzymes_left_out():
+    """AbaSI, MspJI… cut only methylated DNA; as plain patterns they 'cut' at almost every C of a plasmid."""
+    from server.core_seq import _batch
+    names = {str(e) for e in _batch()}
+    assert not names & {"AbaSI", "FspEI", "LpnPI", "MspJI", "SgeI"} and "EcoRI" in names
+
+
+def test_non_ascii_sequence_is_a_plain_error():
+    """A symbol pasted from Word/PDF into a FASTA crashed with UnicodeDecodeError (found by randomised testing)."""
+    import pytest
+    from server import core
+    from server.common import UserFacingError
+    with pytest.raises(UserFacingError, match="not DNA letters"):
+        core.api("construct", {"file": {"name": "x.fasta", "text": ">x\nACGTΩ≈çACGTACGTACGTACGTACGTACGTACGTACGT\n"}})
+
+
+def test_pdf_report_for_every_tool(tmp_path):
+    """Every tool's result must make a PDF. The Sanger one never could: a bare '<' in its methods text ('Q < 20') was
+    read as a tag and broke ReportLab's markup (found by repeated HTTP testing). Also checks the date_toolname_report name."""
+    import base64
+    import os
+    import re
+    os.environ["CB_HOME"] = str(tmp_path)
+    from server import core
+    from server.common import report_filename, save_item
+    from server.report import build_pdf
+    ex = os.path.join(os.path.dirname(__file__), "..", "examples")
+    f = lambda n: {"name": n, "b64": base64.b64encode(open(os.path.join(ex, n), "rb").read()).decode()}  # noqa: E731
+    runs = {"construct": {"file": f("pBAD30.gb")}, "primers": {"text": "F ATGGGTAAGGAAAAGACTCACG\nR TTAGAAAAACTCATCGAGCATC"},
+            "sanger": {"files": [f("3730.ab1")], "reference_file": f("demo_reference.gb"), "demo": True},
+            "protein": {"text": "MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQ"}, "seqtools": {"text": "ACGTGAATTCAAGAATTCTTACGATCG", "motif": "GAATTC"}}
+    for kind, args in runs.items():
+        res = core.api(kind, args)
+        iid = save_item(kind, args, res)
+        out = tmp_path / f"{kind}.pdf"
+        build_pdf(res, out)
+        assert out.read_bytes()[:5] == b"%PDF-", kind
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}_CloneBench-[A-Za-z]+_report\.pdf", report_filename(iid, res)), kind
+
+
+# ---------------------------------------------------------------- primer design (0.2.0)
+def _kan():
+    import base64
+    import os
+    from server import core
+    ex = os.path.join(os.path.dirname(__file__), "..", "examples", "addgene-plasmid-39296-sequence-49545.gbk")
+    return core.api("construct", {"file": {"name": "kan.gbk", "b64": base64.b64encode(open(ex, "rb").read()).decode()}})["record"]
+
+
+def test_design_pcr_pair_is_on_the_template_and_amplifies_the_target():
+    from server import core
+    from server.core_primers import pcr
+    rj = _kan()
+    r = core.api("design", {"template": rj, "mode": "pcr", "feature": "KanR"})
+    p = r["design"]["pairs"][0]
+    s = rj["seq"].upper()
+    assert s[p["fwd_start0"]:p["fwd_start0"] + len(p["fwd"])] == p["fwd"]
+    prods = pcr([{"name": "F", "seq": p["fwd"]}, {"name": "R", "seq": p["rev"]}], rj)["products"]
+    assert any(x["size"] == p["size"] and x["perfect"] for x in prods)
+    t = r["design"]["target"]
+    assert p["fwd_start0"] <= t["start0"] and p["rev_end0"] >= t["start0"] + t["length"]
+
+
+def test_design_ncoi_merges_the_start_codon_and_reports_a_codon_change():
+    """NcoI (CCATGG) in front of ATG AAA… must become …CC ATG GAA… (K2E, reported), never CCATGG + ATGAAA (an
+    out-of-frame ATG ahead of the gene in a pET vector)."""
+    from server import core
+    from server.core_seq import record_from_text, record_json
+    cds = "ATGAAAGCTTTCGGTACCGGAGCTAGCCTGGATGTTAAACCGGCATTTGGCTATCGTCGTGGCAAAGATCTGGCCGTAA"
+    rj = record_json(record_from_text("GGGCCCTTTAAAGGGCCC" + cds + "CCCGGGTTTAAACCCGGG", False, "t")[0])
+    rj["features"].append({"i": 0, "name": "myCDS", "type": "CDS", "strand": 1, "parts": [[18, 18 + len(cds)]], "start0": 18,
+                           "end0": 18 + len(cds), "wraps": False, "length": len(cds), "qualifiers": {}})
+    r = core.api("design", {"template": rj, "mode": "clone", "feature": "myCDS", "enzyme5": "NcoI", "enzyme3": "KpnI"})
+    assert r["design"]["fwd"].startswith("gcgcccATGGAAGCT")
+    assert any("K2E" in f["text"] for f in r["flags"])
+    assert any("KpnI cuts inside the insert" in f["text"] for f in r["flags"])      # GGTACC is in the CDS
+    r = core.api("design", {"template": rj, "mode": "clone", "feature": "myCDS", "enzyme5": "NdeI"})
+    assert r["design"]["fwd"].startswith("gcgccatATGAAAGCT")
+
+
+def test_design_sequencing_walk_covers_the_target():
+    from server import core
+    rj = _kan()
+    r = core.api("design", {"template": rj, "mode": "seq", "feature": "kanMX", "read_len": 600})
+    t, L = r["design"]["target"], rj["length"]
+    covered = set()
+    for rd in r["design"]["reads"]:
+        off = ((rd["from0"] - t["start0"] + L // 2) % L) - L // 2
+        covered |= set(range(off, off + rd["len"]))
+    assert set(range(t["length"])) <= covered

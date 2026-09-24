@@ -40,6 +40,16 @@ parameters); a transparent complementarity heuristic for self-dimers, hairpins a
 pair analysis with an annealing suggestion; a virtual PCR on a loaded construct or pasted template (≤ 2 mismatches, a
 perfect 3′ end, cloning tails, products across the origin, off-target sites) drawn on the map.
 
+**Design primers** — for a feature or a region of a construct (or a pasted template), under the Primers tool's
+buffer. *PCR*: candidates within 4 °C of the target Tm on each side, scored primer3-style (penalties from the ideal,
+weights printed with the result: Tm, GC, 3′ clamp, runs, dinucleotide repeats, 3′ self-complementarity, hairpins,
+cross-dimers, other binding sites on the whole template), top pairs with real alternatives. *Cloning*: primers anchored
+on the insert ends and lengthened to the target Tm, with restriction-site tails (and an optional Kozak); a
+start-codon site such as NcoI or NdeI is merged with the gene's ATG, and any change it forces in codon 2 is reported;
+an enzyme that cuts inside the insert is flagged. *Sequencing*: a primer walk (one or both strands) with the stretch
+each read should cover. Any design opens in the Primers tool for its virtual PCR; a map feature has a *Design
+primers* button.
+
 **Sanger** — `.ab1` traces with their four channels, basecalls and quality bars (zoom, scroll, jump to difference);
 Mott trimming (the `abi-trim` algorithm); Q20/Q30 statistics; local alignment to the reference on both strands (as
 reference + reference for circular ones); every substitution, insertion and deletion with its position, quality,
@@ -69,6 +79,7 @@ server/core_seq.py       reading, CDS checks, restriction,       server/common.p
 server/core_primers.py   Tm, heuristics, virtual PCR             server/agent.py    Claude assistant
 server/core_sanger.py    traces, trimming, alignment, calls      server/selftest.py offline self-test
 server/core_protein.py   ProtParam, A280, tags                   web/index.html     the whole UI
+server/core_design.py    primer design (PCR, cloning, sequencing)
 ```
 Workspace: `~/Library/Application Support/CloneBench/work/<id>/` (inputs, `request.json`, `result.json`,
 `report.pdf`). Set `CB_HOME` to move it.

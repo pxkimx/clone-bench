@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from . import agent, core
 from .common import (HOME, ROOT, SAVED_KINDS, UserFacingError, item_dir, list_items, load_item, load_settings, log_exc,
-                     save_item, save_settings, summary_of)
+                     report_filename, save_item, save_settings, summary_of)
 
 VERSION = (ROOT / "VERSION").read_text().strip() if (ROOT / "VERSION").exists() else "dev"
 app = FastAPI(title="Clone Bench", version=VERSION)
@@ -100,8 +100,7 @@ def report(iid: str, body: ReportIn):
     except Exception as e:  # noqa: BLE001
         msg = log_exc("pdf")
         raise HTTPException(500, f"The PDF report could not be written ({msg}).") from e
-    safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in res["name"])[:60] or "report"
-    return FileResponse(out, media_type="application/pdf", filename=f"CloneBench_{safe}.pdf")
+    return FileResponse(out, media_type="application/pdf", filename=report_filename(iid, res))
 
 
 # ---------------------------------------------------------------- settings, assistant

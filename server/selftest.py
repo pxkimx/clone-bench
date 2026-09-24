@@ -72,6 +72,13 @@ def main() -> int:
     check("KanR pair on pFA6a-kanMX6", "primers",
           {"text": "KanF ATGGGTAAGGAAAAGACTCACG\nKanR TTAGAAAAACTCATCGAGCATC", "preset": "hifi", "template": kan},
           lambda r: r["pcr"]["products"][0]["size"] == 810)
+    print("Design primers")
+    check("PCR pair for KanR", "design", {"template": kan, "mode": "pcr", "feature": "KanR"},
+          lambda r: r["design"]["pairs"] and r["design"]["pairs"][0]["size"] > 810)
+    check("NdeI/XhoI cloning primers", "design", {"template": kan, "mode": "clone", "feature": "KanR", "enzyme5": "NdeI",
+                                                 "enzyme3": "XhoI"}, lambda r: r["design"]["fwd"].startswith("gcgccatATG"))
+    check("sequencing walk, both strands", "design", {"template": kan, "mode": "seq", "feature": "kanMX", "both_strands": True},
+          lambda r: len(r["design"]["primers"]) >= 2)
     print("Sanger")
     check("3730.ab1 vs demo reference", "sanger", {"files": [f("3730.ab1")], "reference_file": f("demo_reference.gb"), "demo": True},
           lambda r: r["summary"]["confident"] == 2)

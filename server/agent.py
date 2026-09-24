@@ -76,6 +76,18 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {"item": ITEM, "feature": {"type": "string"}, "agarose": {"type": "number"}}}},
     {"name": "primer_check", "description": "Analyse primers: Tm (nearest-neighbour, GC, Wallace), GC, 3' clamp, repeats, dimer/hairpin heuristic, pair analysis, and a virtual PCR when template_item is given. primers: text, one per line, 'name sequence'. buffer: {preset: 'taq'|'hifi'|'custom', Na, K, Tris, Mg, dNTPs (mM), primer_nM, DMSO (%)}.",
      "input_schema": {"type": "object", "properties": {"primers": {"type": "string"}, "buffer": {"type": "object"}, "template_item": {"type": "string"}}, "required": ["primers"]}},
+    {"name": "design_primers", "description": (
+        "Design primers on an item's sequence (default: the current construct). mode 'pcr': best pairs amplifying a feature "
+        "or region (tm target default 60, product_min/product_max bp); 'clone': primers anchored on the insert ends with "
+        "optional restriction-site tails enzyme5/enzyme3 (start-codon sites like NcoI/NdeI are merged with the ATG), "
+        "keep_stop, kozak; 'seq': a sequencing-primer walk (read_len default 700, both_strands). Give feature (name) or "
+        "start/end (1-based). Uses the same Tm/buffer, clamp, dimer and off-target checks as primer_check."),
+     "input_schema": {"type": "object", "properties": {"item": ITEM, "mode": {"type": "string", "enum": ["pcr", "clone", "seq"]},
+                                                       "feature": {"type": "string"}, "start": {"type": "integer"}, "end": {"type": "integer"},
+                                                       "tm": {"type": "number"}, "product_min": {"type": "integer"}, "product_max": {"type": "integer"},
+                                                       "enzyme5": {"type": "string"}, "enzyme3": {"type": "string"}, "keep_stop": {"type": "boolean"},
+                                                       "kozak": {"type": "boolean"}, "read_len": {"type": "integer"}, "both_strands": {"type": "boolean"},
+                                                       "buffer": {"type": "object"}}, "required": ["mode"]}},
     {"name": "sanger_summary", "description": "Summary of a Sanger analysis item: per read coverage, identity, every difference with position, quality, confidence and consequence, mixed peaks, and which features are verified.",
      "input_schema": {"type": "object", "properties": {"item": ITEM}}},
     {"name": "translate_feature", "description": "DNA and protein sequence of a feature (by name) in an item's sequence, with the CDS check for CDS features.",
@@ -162,6 +174,14 @@ def run_tool(name: str, inp: dict, current: str | None) -> str:
             r = core.api("primers", args)
             r.pop("record", None)
             return json.dumps(_slim(r) | {"buffer": r.get("buffer"), "pcr_products": (r.get("pcr") or {}).get("products")})[:50000]
+        if name == "design_primers":
+            _, rj = _record(inp.get("item"), current)
+            b = inp.get("buffer") or {}
+            args = {k: v for k, v in inp.items() if k not in ("item", "buffer")}
+            args.update(template=rj, preset=b.get("preset") or "taq", buffer={k: v for k, v in b.items() if k != "preset"})
+            r = core.api("design", args)
+            r.pop("record", None)
+            return json.dumps(_slim(r) | {"design": r.get("design"), "buffer": r.get("buffer")})[:50000]
         if name == "sanger_summary":
             r = load_item(inp.get("item") or current)
             if r.get("kind") != "sanger":

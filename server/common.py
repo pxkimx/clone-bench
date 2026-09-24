@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 HOME = Path(os.environ.get("CB_HOME", Path.home() / "Library" / "Application Support" / "CloneBench"))
 WORK = HOME / "work"
 WORK.mkdir(parents=True, exist_ok=True)
-SAVED_KINDS = ("construct", "primers", "sanger", "protein", "seqtools")
+SAVED_KINDS = ("construct", "primers", "sanger", "protein", "seqtools", "design")
 
 
 def log_exc(where: str) -> str:
@@ -72,6 +72,22 @@ def save_item(kind: str, args: dict, result: dict) -> str:
     result["item"] = iid
     (d / "result.json").write_text(json.dumps(result))
     return iid
+
+
+TOOL_NAMES = {"construct": "Construct", "primers": "Primers", "sanger": "Sanger", "protein": "Protein",
+              "seqtools": "SequenceTools", "design": "PrimerDesign"}
+
+
+def report_filename(iid: str, res: dict, ext: str = "pdf") -> str:
+    """date_toolname_report — e.g. 2026-09-23_CloneBench-Sanger_report.pdf. The date is the day the analysis ran
+    (from its request.json), so a report downloaded again later still carries the date of its contents."""
+    try:
+        t = json.loads((item_dir(iid) / "request.json").read_text()).get("time")
+    except Exception:  # noqa: BLE001
+        t = None
+    day = time.strftime("%Y-%m-%d", time.localtime(t or time.time()))
+    tool = TOOL_NAMES.get(res.get("kind"), str(res.get("kind") or "Analysis").title())
+    return f"{day}_CloneBench-{tool}_report.{ext}"
 
 
 def item_dir(iid: str) -> Path:

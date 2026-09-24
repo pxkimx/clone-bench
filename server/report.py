@@ -50,11 +50,23 @@ TRANS = {"−": "-", "→": "->", "±": "+/-", "–": "-", "—": "-", "×": "x"
 
 def clean(html) -> str:
     html = str(html or "")
+    # a bare "<" in prose ("Q < 20") is not a tag; left in, the tag-stripper below ate everything from it to the next
+    # ">" — an opening <font> included — and ReportLab failed on the orphaned </font>, so no Sanger report could be written
+    html = re.sub(r"<(?![a-zA-Z/])", "&lt;", html)
     html = re.sub(r"<code>(.*?)</code>", r"<font face='Courier'>\1</font>", html)
     html = re.sub(r"<(?!/?(b|i|font)\b)[^>]+>", "", html)
     for a, b in TRANS.items():
         html = html.replace(a, b)
     return html
+
+
+def para(html, style):
+    """A Paragraph from app HTML; text ReportLab still cannot parse goes in as plain text rather than losing the report."""
+    try:
+        return Paragraph(clean(html), style)
+    except Exception:  # noqa: BLE001
+        from xml.sax.saxutils import escape
+        return Paragraph(escape(plain(re.sub(r"<[^>]+>", "", str(html or "")))), style)
 
 
 def plain(s) -> str:
@@ -77,7 +89,7 @@ def _png(data_url: str):
 
 def _table(cols, rows, width, max_rows=60):
     data = [[Paragraph(f"<b>{clean(c)}</b>", S["cell"]) for c in cols]] + \
-           [[Paragraph(clean(v), S["cell"]) for v in r] for r in rows[:max_rows]]
+           [[para(v, S["cell"]) for v in r] for r in rows[:max_rows]]
     t = Table(data, repeatRows=1)
     t.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, 0), 0.8, INK), ("LINEBELOW", (0, 1), (-1, -1), 0.3, LINE),
                            ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
@@ -92,9 +104,9 @@ def build_pdf(res: dict, out: Path, figures: dict | None = None, widget_tables: 
     margin = 16 * mm
     width = W - 2 * margin
     story = [Paragraph("CLONE BENCH · " + KIND_LABEL.get(res["kind"], res["kind"]).upper() + " REPORT", S["kicker"]),
-             Paragraph(clean(res["name"]), S["title"]), Spacer(1, 3),
+             para(res["name"], S["title"]), Spacer(1, 3),
              Paragraph(datetime.now().strftime("Generated %d %B %Y, %H:%M"), S["muted"]), Spacer(1, 10)]
-    cells = [[Paragraph(clean(str(t["value"])), S["tile_v"]), Paragraph(clean(t["label"]), S["tile_l"])] for t in res["tiles"]]
+    cells = [[para(str(t["value"]), S["tile_v"]), para(t["label"], S["tile_l"])] for t in res["tiles"]]
     rows = [[Table([[c[0]], [c[1]]], style=[("LEFTPADDING", (0, 0), (-1, -1), 0)]) for c in cells[i:i + 3]] for i in range(0, len(cells), 3)]
     if rows:
         for r in rows:
@@ -110,7 +122,7 @@ def build_pdf(res: dict, out: Path, figures: dict | None = None, widget_tables: 
     for f in res["flags"]:
         tag = {"ok": ("OK", ACCENT), "warn": ("CHECK", WARN), "info": ("NOTE", MUTED)}[f["level"]]
         fl.append([Paragraph(f"<font color='#{tag[1].hexval()[2:]}'><b>{tag[0]}</b></font>", S["cell"]),
-                   Paragraph(clean(f["text"]), S["body"])])
+                   para(f["text"], S["body"])])
     if fl:
         t = Table(fl, colWidths=[16 * mm, width - 16 * mm])
         t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEBELOW", (0, 0), (-1, -2), 0.4, LINE),
@@ -119,10 +131,10 @@ def build_pdf(res: dict, out: Path, figures: dict | None = None, widget_tables: 
         story.append(t)
 
     for sec in res["sections"]:
-        story += [PageBreak(), Paragraph(clean(sec["kicker"]).upper(), S["kicker"]), Paragraph(clean(sec["title"]), S["h1"]),
-                  Paragraph(clean(sec.get("lede")), S["muted"]), Spacer(1, 8)]
+        story += [PageBreak(), para(str(sec["kicker"] or "").upper(), S["kicker"]), para(sec["title"], S["h1"]),
+                  para(sec.get("lede"), S["muted"]), Spacer(1, 8)]
         for it in sec["items"]:
-            block = [Paragraph(clean(it.get("title")), S["h2"])]
+            block = [para(it.get("title"), S["h2"])]
             if it["type"] in ("fig", "widget"):
                 png = _png(figures.get(it["id"]))
                 if png:
@@ -141,11 +153,11 @@ def build_pdf(res: dict, out: Path, figures: dict | None = None, widget_tables: 
                 else:
                     block.append(Paragraph("<i>(interactive figure — open the analysis in Clone Bench to see it)</i>", S["sub"]))
                 for wt in widget_tables.get(it["id"], []):
-                    block += [Spacer(1, 3), Paragraph(clean(wt.get("title")), S["sub"]), _table(wt["columns"], wt["rows"], width)]
+                    block += [Spacer(1, 3), para(wt.get("title"), S["sub"]), _table(wt["columns"], wt["rows"], width)]
             elif it["type"] == "table":
                 block.append(_table(it["columns"], it["rows"], width))
                 if it.get("note"):
-                    block.append(Paragraph(clean(it["note"]), S["sub"]))
+                    block.append(para(it["note"], S["sub"]))
             if it.get("how"):
                 block.append(Paragraph("<b>How to read it.</b> " + clean(it["how"]), S["muted"]))
             if it.get("yours"):
@@ -157,7 +169,7 @@ def build_pdf(res: dict, out: Path, figures: dict | None = None, widget_tables: 
 
     story += [PageBreak(), Paragraph("METHODS", S["kicker"]), Paragraph("How this analysis was computed", S["h1"])]
     for h, p in res["methods"]:
-        story += [Paragraph(clean(h), S["h2"]), Paragraph(clean(p), S["body"])]
+        story += [para(h, S["h2"]), para(p, S["body"])]
     if res.get("versions"):
         story += [Spacer(1, 8), Paragraph("Software versions", S["h2"]),
                   Paragraph(", ".join(f"{k} {v}" for k, v in res["versions"].items()), S["muted"])]

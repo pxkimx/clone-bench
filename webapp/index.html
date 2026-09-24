@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<script>window.CB_WEB = true;  /* browser build: api() runs the Python core in Pyodide */</script>
+<script>window.CB_WEB = true;  /* browser build: api() runs the Python core in Pyodide */
+window.CB_CORE = ["core.py", "core_seq.py", "core_primers.py", "core_sanger.py", "core_protein.py", "core_design.py"];</script>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clone Bench Web</title>
 <meta name="author" content="Paul H. Kim, Ph.D.">
@@ -563,6 +564,7 @@ tr.on td{background:var(--accent-soft)!important}
     <div class="navwrap" id="toolsWrap"><div class="navlabel">Tools</div><nav class="nav" id="toolNav">
       <a href="#tool=construct" data-tool="construct"><i>◯</i>Construct</a>
       <a href="#tool=primers" data-tool="primers"><i>⇄</i>Primers</a>
+      <a href="#tool=design" data-tool="design"><i>✎</i>Design primers</a>
       <a href="#tool=sanger" data-tool="sanger"><i>∿</i>Sanger</a>
       <a href="#tool=protein" data-tool="protein"><i>P</i>Protein</a>
       <a href="#tool=seqtools" data-tool="seqtools"><i>≡</i>Sequence tools</a>
@@ -601,6 +603,7 @@ tr.on td{background:var(--accent-soft)!important}
       <div class="toolcards">
         <button data-tool="construct"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 7 4"/><path d="M12 1.5v3"/></svg><h3>Construct</h3><p>Map, features, CDS checks, restriction sites, virtual digest and gel, ORFs.</p></button>
         <button data-tool="primers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h12l-3-3M21 16H9l3 3"/></svg><h3>Primers</h3><p>Tm under your buffer, 3′ clamp, dimers and hairpins, virtual PCR.</p></button>
+        <button data-tool="design"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17h7M14 7h7M10 17l-3-3M14 7l3 3"/><path d="M3 12h18" stroke-dasharray="2 3"/></svg><h3>Design primers</h3><p>PCR pairs for a region, cloning primers with sites, sequencing-primer walks.</p></button>
         <button data-tool="sanger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 18c2 0 2-10 4-10s2 10 4 10 2-12 4-12 2 12 4 12 2-8 4-8"/></svg><h3>Sanger</h3><p>Traces, trimming, differences with a confidence, is the clone verified?</p></button>
         <button data-tool="protein"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16c3-8 5 4 8-4s5 4 8-4"/><circle cx="4" cy="16" r="1.5"/><circle cx="20" cy="8" r="1.5"/></svg><h3>Protein</h3><p>MW, pI, ε280 and A280 → mg/mL, hydropathy, tags and protease scars.</p></button>
         <button data-tool="seqtools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h13"/></svg><h3>Sequence tools</h3><p>Reverse complement, translate, IUPAC motifs, SEGUID “same plasmid?”.</p></button>
@@ -723,6 +726,42 @@ tr.on td{background:var(--accent-soft)!important}
       </div>
     </div>
 
+    <!-- DESIGN PRIMERS -->
+    <div id="v_design" class="toolview" hidden>
+      <div class="toolhead"><span class="k">Tool 3</span><h1>Design primers</h1></div>
+      <p class="toollede">Primers for a feature or a region of a construct: PCR pairs scored like primer3, cloning primers anchored on the insert with restriction-site tails, or a walk of sequencing primers. Each design is judged by the same Tm, clamp, dimer and off-target checks as the Primers tool, under your buffer.</p>
+      <div class="cols2">
+        <div class="panel2">
+          <div class="srcsel">
+            <label class="fld">Template — a loaded construct<select id="d_tpl"><option value="">— construct —</option></select></label>
+            <label class="fld">or paste a template sequence<textarea id="d_tpltext" style="min-height:60px" placeholder="optional"></textarea></label>
+            <label class="cb"><input type="checkbox" id="d_tplcirc"> pasted template is circular</label>
+          </div>
+          <div class="grid3"><label class="fld" style="grid-column:span 3">Target feature<select id="d_feat"><option value="">— or give a region below —</option></select></label>
+            <label class="fld">Region start<input type="number" min="1" id="d_start" class="inp"></label><label class="fld">Region end<input type="number" min="1" id="d_end" class="inp"></label><span></span></div>
+          <div class="seg" id="d_mode" role="tablist" aria-label="Design mode"><button class="on" data-m="pcr">PCR</button><button data-m="clone">Cloning</button><button data-m="seq">Sequencing</button></div>
+          <div class="grid3 dm dm-pcr"><label class="fld">Target Tm (°C)<input type="number" id="d_tm" value="60" class="inp"></label><label class="fld">Product min (bp)<input type="number" id="d_pmin" class="inp" placeholder="target + 40"></label><label class="fld">Product max (bp)<input type="number" id="d_pmax" class="inp" placeholder="target + 400"></label>
+            <label class="fld">Primer length min<input type="number" id="d_lmin" value="18" class="inp"></label><label class="fld">Primer length max<input type="number" id="d_lmax" value="28" class="inp"></label></div>
+          <div class="grid3 dm dm-clone" hidden><label class="fld">5′ enzyme<input type="text" id="d_e5" list="d_enz" class="inp" placeholder="e.g. NdeI"></label><label class="fld">3′ enzyme<input type="text" id="d_e3" list="d_enz" class="inp" placeholder="e.g. XhoI"></label><label class="fld">Target Tm (°C)<input type="number" id="d_tmc" value="60" class="inp"></label>
+            <label class="cb"><input type="checkbox" id="d_stop" checked> keep the stop codon</label><label class="cb"><input type="checkbox" id="d_kozak"> add Kozak (mammalian)</label>
+            <datalist id="d_enz"><option>NdeI<option>NcoI<option>EcoRI<option>BamHI<option>XhoI<option>HindIII<option>NotI<option>XbaI<option>SalI<option>KpnI<option>NheI<option>AgeI<option>BglII<option>SacI<option>PstI</datalist></div>
+          <div class="grid3 dm dm-seq" hidden><label class="fld">Good read length (bp)<input type="number" id="d_read" value="700" class="inp"></label><label class="fld">Target Tm (°C)<input type="number" id="d_tms" value="56" class="inp"></label><label class="cb"><input type="checkbox" id="d_both"> both strands</label></div>
+          <div class="why" id="d_buf"></div>
+          <button class="btn accent" id="d_run">Design primers</button>
+          <div class="errline" id="d_err"></div>
+        </div>
+        <div class="panel2">
+          <div class="navlabel" style="padding:0">Examples</div>
+          <div class="examples">
+            <button class="ex" id="d_ex1"><span class="k">PCR</span><b>Amplify KanR from pFA6a-kanMX6</b><small>best pairs around the 810 bp CDS</small></button>
+            <button class="ex" id="d_ex2"><span class="k">cloning</span><b>KanR into pET with NdeI / XhoI</b><small>start codon merged with the NdeI site</small></button>
+            <button class="ex" id="d_ex3"><span class="k">sequencing</span><b>Verify the kanMX cassette</b><small>primer walk on both strands</small></button>
+          </div>
+          <p class="small" style="margin-top:12px">Scoring is primer3-style (penalties from the ideal) but it is not primer3 and computes no ΔG for dimers or hairpins; the weights are printed under each result. Check a chosen pair in the Primers tool to see its virtual PCR.</p>
+        </div>
+      </div>
+    </div>
+
     <!-- SEQUENCE TOOLS -->
     <div id="v_seqtools" class="toolview" hidden>
       <div class="toolhead"><span class="k">Tool 5</span><h1>Sequence tools</h1></div>
@@ -796,7 +835,9 @@ async function pyReady(){
    const py=await loadPyodide();
    await py.loadPackage(["numpy","biopython"]);
    py.FS.mkdirTree("/home/pyodide/server");
-   for(const f of ["__init__.py","core.py","core_seq.py","core_primers.py","core_sanger.py","core_protein.py"]){
+   /* the module list comes from make_webapp.py (window.CB_CORE) — a second hand-kept list here once went stale and
+      the browser build shipped core_design.py without loading it */
+   for(const f of ["__init__.py",...(window.CB_CORE||["core.py","core_seq.py","core_primers.py","core_sanger.py","core_protein.py","core_design.py"])]){
     const txt=f==="__init__.py"?"":await (await fetch("py/"+f)).text();
     py.FS.writeFile("/home/pyodide/server/"+f,txt)}
    py.runPython(`
@@ -835,7 +876,7 @@ async function fileArg(f){return{name:f.name,b64:b64(await f.arrayBuffer())}}
 async function exampleArg(name){const r=await fetch("examples/"+encodeURIComponent(name));if(!r.ok)throw new Error("Example "+name+" is missing.");return{name,b64:b64(await r.arrayBuffer())}}
 
 /* ------------------------------------------------------------------ navigation */
-const VIEWS=["home","v_construct","v_primers","v_sanger","v_protein","v_seqtools","results"];
+const VIEWS=["home","v_construct","v_primers","v_design","v_sanger","v_protein","v_seqtools","results"];
 function show(v){for(const x of VIEWS)$("#"+x).hidden=x!==v;$("#navWrap").hidden=v!=="results";S.view=v;
  $$("#toolNav a").forEach(a=>a.classList.toggle("on",v==="v_"+a.dataset.tool||(v==="results"&&S.result&&S.result.kind===a.dataset.tool)));window.scrollTo(0,0)}
 function goTool(t){history.replaceState(null,"","#tool="+t);show("v_"+t);prepTool(t)}
@@ -852,7 +893,7 @@ function openResult(r){S.result=r;S.item=r.item||null;S.orfs=null;S.sel=null;
 
 /* ------------------------------------------------------------------ recent */
 const whenLabel=t=>{const d=new Date(t),now=new Date();return d.toDateString()===now.toDateString()?d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):d.toLocaleDateString([],{month:"short",day:"numeric"})};
-const KIND={construct:"Construct",primers:"Primers",sanger:"Sanger",protein:"Protein",seqtools:"Sequence tools"};
+const KIND={construct:"Construct",primers:"Primers",sanger:"Sanger",protein:"Protein",seqtools:"Sequence tools",design:"Primer design"};
 const KICON={construct:"◯",primers:"⇄",sanger:"∿",protein:"P",seqtools:"≡"};
 function subOf(x){const s=x.summary||{};
  if(x.kind==="construct"&&s.length)return`${fmt(s.length)} bp · ${s.circular?"circular":"linear"} · ${s.single_cutters} single cutters`;
@@ -880,6 +921,7 @@ async function codonTables(){if(TABLES)return TABLES;try{TABLES=(await api("codo
 async function fillTables(sel,def){const t=await codonTables();sel.innerHTML=t.map(x=>`<option value="${x.id}" ${x.id===def?"selected":""}>${x.id} · ${esc(x.name)}</option>`).join("")}
 async function prepTool(t){
  if(t==="primers"){fillConstructPicker($("#p_tpl"),["construct"]);loadBuffer()}
+ if(t==="design"){await fillConstructPicker($("#d_tpl"),["construct"]);loadBuffer();designBufNote();if(S.designPick){$("#d_tpl").value=S.designPick.item;await designFeats();$("#d_feat").value=S.designPick.feature;S.designPick=null}}
  if(t==="sanger")fillConstructPicker($("#s_ref"),["construct"]);
  if(t==="protein"){fillConstructPicker($("#r_item"),["construct"]);if(!$("#r_table").options.length)fillTables($("#r_table"),1)}
  if(t==="seqtools"&&!$("#t_table").options.length)fillTables($("#t_table"),1)}
@@ -917,6 +959,28 @@ $("#p_run").onclick=()=>runPrimers($("#p_text").value).catch(()=>{});
 $("#p_ex").onclick=async()=>{try{const rr=await api("read_reference",{file:await exampleArg("addgene-plasmid-39296-sequence-49545.gbk")});
  const txt="KanF\tATGGGTAAGGAAAAGACTCACG\nKanR_rev\tTTAGAAAAACTCATCGAGCATC\nEcoRI_KanF\tgcgcGAATTCATGGGTAAGGAAAAGACTCACG";$("#p_text").value=txt;$("#p_text").dispatchEvent(new Event("input"));
  await runPrimers(txt,rr.record)}catch(e){$("#p_err").textContent=e.message}};
+
+/* design primers */
+S.dMode="pcr";
+$$("#d_mode button").forEach(b=>b.onclick=()=>{S.dMode=b.dataset.m;$$("#d_mode button").forEach(x=>x.classList.toggle("on",x===b));$$(".dm").forEach(x=>x.hidden=!x.classList.contains("dm-"+S.dMode))});
+function designBufNote(){const a=bufferArg(),v=a.buffer;$("#d_buf").innerHTML=`Buffer from the Primers tool: <b>${esc($("#p_preset").selectedOptions[0]?.textContent||a.preset)}</b> — K⁺ ${v.K??0}, Na⁺ ${v.Na??0}, Mg²⁺ ${v.Mg??0}, dNTPs ${v.dNTPs??0} mM, primer ${v.primer_nM??0} nM. Change it there.`}
+async function designFeats(){const sel=$("#d_feat");sel.innerHTML='<option value="">— or give a region below —</option>';const id=$("#d_tpl").value;if(!id)return;
+ try{const rec=await recordOf(id);sel.innerHTML+=rec.features.map(f=>`<option value="${esc(f.name)}">${esc(f.name)} · ${esc(f.type)} · ${fmt(f.length)} bp</option>`).join("")}catch(e){$("#d_err").textContent=e.message}}
+$("#d_tpl").onchange=designFeats;
+async function runDesign(extra){const args={mode:S.dMode,...bufferArg(),...(extra||{})};
+ if(!args.template){if($("#d_tpl").value)args.template=await recordOf($("#d_tpl").value);else if($("#d_tpltext").value.trim()){args.template=$("#d_tpltext").value;args.template_circular=$("#d_tplcirc").checked}}
+ if(!("feature" in args)&&!("start" in args)){if($("#d_feat").value)args.feature=$("#d_feat").value;else{args.start=$("#d_start").value;args.end=$("#d_end").value}}
+ const num=id=>{const v=$(id).value;return v===""?null:+v};
+ if(S.dMode==="pcr")Object.assign(args,{tm:num("#d_tm"),product_min:num("#d_pmin"),product_max:num("#d_pmax"),min_len:num("#d_lmin"),max_len:num("#d_lmax")},extra||{});
+ if(S.dMode==="clone")Object.assign(args,{enzyme5:$("#d_e5").value,enzyme3:$("#d_e3").value,tm:num("#d_tmc"),keep_stop:$("#d_stop").checked,kozak:$("#d_kozak").checked},extra||{});
+ if(S.dMode==="seq")Object.assign(args,{read_len:num("#d_read"),tm:num("#d_tms"),both_strands:$("#d_both").checked},extra||{});
+ return run("design",args,"#d_err","Designing primers…")}
+$("#d_run").onclick=()=>runDesign().catch(()=>{});
+async function designExample(mode,extra){try{const rr=await api("read_reference",{file:await exampleArg("addgene-plasmid-39296-sequence-49545.gbk")});
+ $$("#d_mode button").forEach(b=>{if(b.dataset.m===mode)b.click()});await runDesign({template:rr.record,feature:"KanR",...extra})}catch(e){$("#d_err").textContent=e.message}}
+$("#d_ex1").onclick=()=>designExample("pcr");
+$("#d_ex2").onclick=()=>designExample("clone",{enzyme5:"NdeI",enzyme3:"XhoI",keep_stop:true});
+$("#d_ex3").onclick=async()=>{S.dMode="seq";try{const rr=await api("read_reference",{file:await exampleArg("addgene-plasmid-39296-sequence-49545.gbk")});$$("#d_mode button").forEach(b=>{if(b.dataset.m==="seq")b.click()});await runDesign({template:rr.record,feature:"kanMX",both_strands:true})}catch(e){$("#d_err").textContent=e.message}};
 
 /* sanger */
 S.sFiles=[];
@@ -977,6 +1041,10 @@ function renderResults(R){const root=$("#results");root.innerHTML="";TRACE={};
  root.appendChild(top);const act=top.querySelector("#topAct");
  if(R.record&&R.kind==="construct"){
   for(const [lab,fmt] of [["GenBank","genbank"],["FASTA","fasta"]]){const b=el("button","btn sm",lab);b.onclick=async()=>{try{const x=await api("export",{record:R.record,format:fmt});download(x.filename,x.text,"text/plain")}catch(e){toast(e.message)}};act.appendChild(b)}}
+ if(R.kind==="design"&&R.design&&R.record){const d=R.design;const txt=d.mode==="pcr"?`F1\t${d.pairs[0].fwd}\nR1\t${d.pairs[0].rev}`:d.mode==="clone"?`F\t${d.fwd}\nR\t${d.rev}`:d.primers.map(p=>`${p.name}\t${p.seq}`).join("\n");
+  const b=el("button","btn sm",d.mode==="seq"?"Check these primers":"Check in the Primers tool");b.title="Run the Primers tool on "+(d.mode==="pcr"?"the best pair":"these primers")+" with this template (Tm, dimers, virtual PCR)";
+  b.onclick=()=>{goTool("primers");$("#p_text").value=txt;$("#p_text").dispatchEvent(new Event("input"));runPrimers(txt,R.record).catch(()=>{})};act.appendChild(b);
+  const c=el("button","btn sm","Copy primers");c.onclick=()=>{navigator.clipboard.writeText(txt).then(()=>toast("Copied"),()=>toast("Copy failed"))};act.appendChild(c)}
  if(!WEB&&R.item){const b=el("button","btn sm accent",`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12M6 10l6 6 6-6M4 20h16"/></svg>PDF report`);b.onclick=pdfReport;act.appendChild(b)}
  $("#chatCtx").textContent=R.name;setChips(R);
  const tiles=el("div","tiles");tiles.innerHTML=R.tiles.map(t=>`<div class="tile"><b style="${String(t.value).length>12?"font-size:15px":""}">${esc(t.value)}</b><span>${esc(t.label)}</span></div>`).join("");root.appendChild(tiles);
@@ -1093,6 +1161,7 @@ function showFeature(side,f,rec,R){const L=rec.length;const seq=f.kind==="orf"?n
   const b1=el("button","btn sm","Enzymes around it");b1.onclick=()=>{window.dispatchEvent(new CustomEvent("useFeature",{detail:{f,what:"enzymes"}}));document.getElementById("restriction").scrollIntoView({behavior:"smooth"})};
   const b2=el("button","btn sm","Digest vs without it");b2.onclick=()=>{window.dispatchEvent(new CustomEvent("useFeature",{detail:{f,what:"digest"}}));document.getElementById("digest").scrollIntoView({behavior:"smooth"})};
   row.append(b1,b2);
+  if(R.item){const bd=el("button","btn sm","Design primers");bd.title="Open the primer designer with this construct and feature";bd.onclick=()=>{S.designPick={item:R.item,feature:f.name};goTool("design")};row.append(bd)}
   if(f.type==="CDS"){const b3=el("button","btn sm","Protein properties");b3.onclick=()=>run("protein",{record:rec,feature:f.i},null,"Translating "+f.name+"…").catch(()=>{});row.append(b3)}
   side.appendChild(row)}}
 
@@ -1442,7 +1511,9 @@ async function pdfReport(){if(!S.item)return;const done=busy("Writing the PDF re
    if(card.__tables)widget_tables[id]=card.__tables()}
   const r=await fetch(`/api/items/${encodeURIComponent(S.item)}/report`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({figures,widget_tables})});
   if(!r.ok)throw new Error((await r.json()).detail||"report failed");
-  const blob=await r.blob();download(`CloneBench_${fileSafe(S.result.name)}.pdf`,blob,"application/pdf");
+  /* the server names it date_toolname_report (e.g. 2026-09-23_CloneBench-Sanger_report.pdf) */
+  const fn=((r.headers.get("content-disposition")||"").match(/filename="?([^";]+)"?/)||[])[1]||"CloneBench_report.pdf";
+  const blob=await r.blob();download(fn,blob,"application/pdf");
  }catch(e){toast("PDF: "+e.message)}finally{done()}}
 
 /* ------------------------------------------------------------------ settings */
