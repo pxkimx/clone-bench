@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.2 — 2026-09-25
+- **The browser version can now download a report.** The desktop app's PDF report needs reportlab and the local
+  server, so Clone Bench Web never had one. Any analysis page there now has a **Download report** button that
+  writes a single self-contained `.html` file instead: the same title, tiles, findings, maps/gels/plots/tables and
+  their "how to read it" / "in your data" text, methods and software versions as the desktop PDF. It opens in any
+  browser with no internet connection and no install, and File → Print → Save as PDF gives clean pages if you want
+  a PDF after all.
+- Figures are embedded as vector SVG (or a PNG snapshot for the Sanger chromatogram, since that one is drawn on a
+  canvas), so they stay sharp when printed or zoomed. Interactive tables (enzyme lists, digest fragments, ORFs)
+  are captured in whatever state you left them in.
+- Updated the browser home page's note, which used to say the PDF report was desktop-only.
+
 ## 0.2.1 — 2026-09-24
 - **The browser version now saves your analyses.** Until now everything run in Clone Bench Web was lost when the tab
   closed. Each construct, primer check, Sanger run, protein and sequence-tools result is now kept in the browser
