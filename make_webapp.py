@@ -8,7 +8,9 @@
 - server/core*.py → webapp/py/ (checked here to import nothing but Biopython, numpy and the standard library)
 - the example files → webapp/examples/
 
-The assistant, the PDF report and saved history need the local server, so the page hides them and says so.
+The assistant needs the local server, so the page hides it and says so. The desktop PDF report (reportlab) is not
+available either, but the browser build has its own "Download report" button that writes a self-contained HTML
+report instead — see webReport() in web/index.html.
 Serve locally with:  .venv/bin/python -m http.server 8778 --directory webapp
 """
 from __future__ import annotations

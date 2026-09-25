@@ -1092,6 +1092,7 @@ function renderResults(R){const root=$("#results");root.innerHTML="";TRACE={};
   b.onclick=()=>{goTool("primers");$("#p_text").value=txt;$("#p_text").dispatchEvent(new Event("input"));runPrimers(txt,R.record).catch(()=>{})};act.appendChild(b);
   const c=el("button","btn sm","Copy primers");c.onclick=()=>{navigator.clipboard.writeText(txt).then(()=>toast("Copied"),()=>toast("Copy failed"))};act.appendChild(c)}
  if(!WEB&&R.item){const b=el("button","btn sm accent",`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12M6 10l6 6 6-6M4 20h16"/></svg>PDF report`);b.onclick=pdfReport;act.appendChild(b)}
+ if(WEB&&R.item){const b=el("button","btn sm accent",`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12M6 10l6 6 6-6M4 20h16"/></svg>Download report`);b.title="A self-contained HTML report of this analysis — opens anywhere offline, prints cleanly to PDF";b.onclick=()=>webReport(R);act.appendChild(b)}
  $("#chatCtx").textContent=R.name;setChips(R);
  const tiles=el("div","tiles");tiles.innerHTML=R.tiles.map(t=>`<div class="tile"><b style="${String(t.value).length>12?"font-size:15px":""}">${esc(t.value)}</b><span>${esc(t.label)}</span></div>`).join("");root.appendChild(tiles);
  const ins=el("div","insights");ins.id="summary";
@@ -1562,6 +1563,179 @@ async function pdfReport(){if(!S.item)return;const done=busy("Writing the PDF re
   const blob=await r.blob();download(fn,blob,"application/pdf");
  }catch(e){toast("PDF: "+e.message)}finally{done()}}
 
+/* ------------------------------------------------------------------ downloadable HTML report (browser build)
+   The desktop PDF needs reportlab and the local server, neither available here. This builds the same content —
+   title, tiles, flags, every section's figures/tables with their how/yours, methods, versions — as one
+   self-contained .html file: no external requests, opens anywhere offline, prints cleanly to PDF. Figures already
+   drawn as SVG are embedded via svgString() (LIGHT palette, matches the desktop report's white background); the
+   Sanger trace (a canvas) via its own PNG snapshot; a few figure kinds are plain HTML and are rebuilt from their
+   data instead of a snapshot. Interactive widget tables (enzymes, digest, ORFs) use their current rows, exactly
+   like the desktop report's card.__tables. */
+const REPORT_KIND_LABEL={construct:"Construct",primers:"Primers",sanger:"Sanger verification",protein:"Protein",seqtools:"Sequence tools"};
+const REPORT_TOOL_NAME={construct:"Construct",primers:"Primers",sanger:"Sanger",protein:"Protein",seqtools:"SequenceTools"};
+function reportFilename(R){const day=new Date(R._t||Date.now()).toISOString().slice(0,10);
+ return `${day}_CloneBench-${REPORT_TOOL_NAME[R.kind]||"Analysis"}_report.html`}
+function reportTable(cols,rows,max){max=max||500;
+ const thead=`<tr>${cols.map(c=>`<th>${esc(c)}</th>`).join("")}</tr>`;
+ const body=rows.slice(0,max).map(r=>`<tr>${r.map(v=>`<td>${safe(v)}</td>`).join("")}</tr>`).join("");
+ const more=rows.length>max?`<p class="rtnote">Showing the first ${fmt(max)} of ${fmt(rows.length)} rows.</p>`:"";
+ return `<div class="rtable"><table><thead>${thead}</thead><tbody>${body}</tbody></table></div>${more}`}
+function reportMono(it){let t=it.data.text||"";if(it.data.wrap)t=t.replace(new RegExp(`(.{${it.data.wrap}})`,"g"),"$1\n");
+ return `<div class="rpre">${esc(t)}</div>`}
+function reportFrames(it){return `<div class="rframes">${(it.data.frames||[]).map(f=>`<div><b>${esc(f.frame)}</b>${esc(f.protein)}</div>`).join("")}</div>`}
+function reportAlignment(it){const d=it.data,W=60;let h="";
+ for(let i=0;i<d.ref.length;i+=W){const a=d.ref.slice(i,i+W),m=d.mid.slice(i,i+W),b=d.read.slice(i,i+W);
+  const rp=d.refpos.slice(i,i+W).find(x=>x!=null),ri=d.readidx.slice(i,i+W).filter(x=>x!=null);
+  let top="",bot="";
+  for(let j=0;j<a.length;j++){const cls=m[j]==="x"?"x":(a[j]==="-"||b[j]==="-")?"g":"";
+   const style=cls==="x"?' style="background:#fbe6ea;color:#c9304f;font-weight:600"':cls==="g"?' style="background:#fdf0dc;color:#b45309;font-weight:600"':"";
+   top+=cls?`<span${style}>${esc(a[j])}</span>`:esc(a[j]);bot+=cls?`<span${style}>${esc(b[j])}</span>`:esc(b[j])}
+  const rl=`${rp!=null?fmt(rp+1):""}`.padStart(7),ql=`${ri.length?fmt((d.strand===1?Math.min(...ri):Math.max(...ri))+1):""}`.padStart(7);
+  h+=`<div class="rblk">Ref  ${esc(rl)} ${top}\n             ${esc(m)}\nRead ${esc(ql)} ${bot}</div>`}
+ const note=d.strand===1?"The read runs forward along the reference.":"The read aligned to the reverse strand: it is shown reverse-complemented, and its positions count down.";
+ return `<div class="raln">${h}</div><p class="rnote">${esc(note)}</p>`}
+function reportProtseq(it){const s=it.data.seq,marks=it.data.marks||[];const cls=new Array(s.length).fill("");const cut=new Set();
+ marks.forEach(m=>{for(let i=m.start-1;i<m.end;i++)cls[i]=m.kind==="tag"?"tagm":"prot";if(m.cut)cut.add(m.cut)});
+ let h="";for(let i=0;i<s.length;i+=60){h+=esc(String(i+1).padStart(5))+" ";
+  for(let j=i;j<Math.min(s.length,i+60);j++){if(j>i&&(j-i)%10===0)h+=" ";
+   if(cut.has(j))h+=`<b style="color:#b45309">↓</b>`;
+   const style=cls[j]==="tagm"?' style="text-decoration:underline;text-decoration-color:#0f766e;color:#0f766e;font-weight:600"':cls[j]==="prot"?' style="background:#fdf0dc;color:#b45309;font-weight:600"':"";
+   h+=style?`<span${style}>${esc(s[j])}</span>`:esc(s[j])}
+  h+="\n"}
+ return `<div class="rprot">${h}</div>`}
+function reportItem(it,cap){cap=cap||{};let body;
+ if(it.type==="table"){body=reportTable(it.columns,it.rows);if(it.note)body+=`<p class="rnote">${safe(it.note)}</p>`}
+ else if(it.type==="fig"){
+  if(cap.svgHtml)body=`<div class="figure">${cap.svgHtml}</div>`;
+  else if(cap.pngDataUrl)body=`<img class="figure-img" alt="${esc(it.title||"figure")}" src="${cap.pngDataUrl}">`;
+  else if(it.draw==="mono")body=reportMono(it);
+  else if(it.draw==="alignment")body=reportAlignment(it);
+  else if(it.draw==="protseq")body=reportProtseq(it);
+  else if(it.draw==="frames")body=reportFrames(it);
+  else body=`<p class="rnote"><i>(interactive figure — open the analysis in Clone Bench to see it)</i></p>`}
+ else if(it.type==="widget"){
+  const parts=[];
+  if(cap.svgHtml)parts.push(`<div class="figure">${cap.svgHtml}</div>`);
+  (cap.tables||[]).forEach(t=>{if(t.title)parts.push(`<div class="rtitle">${esc(t.title)}</div>`);parts.push(reportTable(t.columns,t.rows))});
+  if(cap.extraHtml)parts.push(`<div class="rextra">${cap.extraHtml}</div>`);
+  if(!parts.length)parts.push(`<p class="rnote"><i>(interactive figure — open the analysis in Clone Bench to see it)</i></p>`);
+  body=parts.join("")}
+ else body="";
+ return `<div class="item">
+  <h3>${esc(it.title||"")}</h3>${it.sub?`<div class="rsub">${esc(it.sub)}</div>`:""}
+  ${body}
+  ${it.how?`<p class="rhow"><b>How to read it.</b> ${safe(it.how)}</p>`:""}
+  ${it.yours?`<p class="ryours"><b>In your data.</b> ${safe(it.yours)}</p>`:""}
+ </div>`}
+function reportSection(sec,caps){
+ const items=sec.items.map(it=>{try{return reportItem(it,caps[it.id])}
+  catch(e){return `<div class="item"><h3>${esc(it.title||"")}</h3><p class="rnote">This part could not be included: ${esc(e.message)}</p></div>`}}).join("");
+ return `<section class="rsec"><div class="rsech"><span class="rkicker">${esc((sec.kicker||"").toUpperCase())}</span><h2>${safe(sec.title)}</h2></div>${sec.lede?`<p class="rlede">${safe(sec.lede)}</p>`:""}${items}</section>`}
+function reportFlags(R){
+ if(!R.flags.length)return `<div class="rinsight"><span class="rtag info">NOTE</span><div>Nothing to flag.</div></div>`;
+ return R.flags.map(f=>`<div class="rinsight"><span class="rtag ${f.level}">${{ok:"OK",warn:"CHECK",info:"NOTE"}[f.level]}</span><div>${safe(f.text)}</div></div>`).join("")}
+function reportTiles(R){return `<div class="rtiles">${R.tiles.map(t=>`<div class="rtile"><b>${esc(t.value)}</b><span>${esc(t.label)}</span></div>`).join("")}</div>`}
+function reportMethods(R){
+ const body=R.methods.map(([h,p])=>`<div class="rmeth"><h4>${esc(h)}</h4><p>${safe(p)}</p></div>`).join("");
+ const versions=Object.entries(R.versions||{}).map(([k,v])=>`<span class="rchip">${esc(k)} ${esc(v)}</span>`).join("")+`<span class="rchip">browser build (Pyodide)</span>`;
+ return `<section class="rsec"><div class="rsech"><span class="rkicker">REPRODUCIBILITY</span><h2>Methods</h2></div>${body}<div class="rversions">${versions}</div></section>`}
+const REPORT_CSS=`
+:root{--ink:#0d1b22;--ink2:#33454f;--muted:#6a7b84;--line:#dde4e8;--line2:#eef2f4;--panel:#ffffff;--panel2:#f8fafb;--bg:#f3f5f6;
+ --accent:#0f766e;--accent-soft:#e0f4f1;--warn:#b45309;--warn-soft:#fdf0dc;--info:#3056a8;--info-soft:#e7eefb;
+ --sans:Helvetica,Arial,sans-serif;--mono:Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 var(--sans)}
+.rpage{max-width:920px;margin:0 auto;padding:32px 28px 64px;background:var(--panel)}
+h1,h2,h3,h4{font-family:var(--sans)}
+.rkicker{font:700 11px var(--mono);letter-spacing:.08em;color:var(--accent);text-transform:uppercase}
+.rhead h1{font-size:30px;margin:6px 0 4px;letter-spacing:-.02em}
+.rmuted{color:var(--muted);font-size:12.5px;margin-bottom:18px}
+.rtiles{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:20px}
+.rtile{background:var(--panel);padding:12px 14px}
+.rtile b{display:block;font-size:18px}
+.rtile span{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
+.rsec{margin:26px 0}
+.rsech h2{font-size:19px;margin:2px 0 6px}
+.rlede{color:var(--muted);margin:0 0 12px}
+.rinsight{display:flex;gap:12px;padding:8px 0;border-bottom:1px solid var(--line2)}
+.rtag{flex:none;font:700 10.5px var(--mono);padding:2px 8px;border-radius:99px;height:fit-content;white-space:nowrap}
+.rtag.ok{background:var(--accent-soft);color:var(--accent)}
+.rtag.warn{background:var(--warn-soft);color:var(--warn)}
+.rtag.info{background:var(--info-soft);color:var(--info)}
+.item{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 16px;break-inside:avoid}
+.item h3{margin:0 0 4px;font-size:15px}
+.rsub{color:var(--muted);font-size:12px;margin-bottom:8px}
+.figure{background:var(--panel2);border:1px solid var(--line2);border-radius:10px;overflow:hidden;margin:8px 0}
+.figure svg{display:block;width:100%;height:auto}
+.figure-img{display:block;width:100%;height:auto;border:1px solid var(--line2);border-radius:10px;margin:8px 0}
+.rtable{overflow:auto;margin:8px 0}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line2);vertical-align:top}
+th{border-bottom:1.5px solid var(--ink);font-weight:700}
+.rtitle{font-size:12px;color:var(--muted);margin:10px 0 2px}
+.rtnote{color:var(--muted);font-size:11.5px;margin:2px 0}
+.rpre,.raln,.rprot,.rframes{font:12px/1.5 var(--mono);white-space:pre;overflow:auto;background:var(--panel2);border:1px solid var(--line2);border-radius:10px;padding:10px 12px;margin:8px 0;max-width:100%}
+.rframes div{white-space:pre-wrap;word-break:break-all;margin-bottom:8px}
+.rframes b{color:var(--accent);margin-right:8px}
+.rextra{margin:8px 0}
+.rnote{color:var(--muted);font-size:12.5px}
+.rhow{color:var(--muted);font-size:12.5px;margin:8px 0 2px}
+.ryours{font-size:13px;margin:2px 0}
+.rmeth h4{margin:10px 0 2px;font-size:13px}
+.rmeth p{margin:0 0 6px;color:var(--ink2);font-size:13px}
+.rversions{margin-top:8px}
+.rchip{display:inline-block;font:11px var(--mono);background:var(--panel2);border:1px solid var(--line);border-radius:99px;padding:2px 9px;margin:0 6px 6px 0;color:var(--muted)}
+.rdisclaimer{color:var(--muted);font-size:11.5px;font-style:italic;margin-top:18px}
+.rfoot{color:var(--muted);font-size:11.5px;margin-top:24px;border-top:1px solid var(--line);padding-top:10px}
+@media print{
+ body{background:#fff}
+ .rpage{max-width:none;padding:0}
+ .item,.figure,tr{break-inside:avoid}
+ .rsec{break-inside:auto}
+ a{color:inherit;text-decoration:none}
+}`;
+function buildReportHtml(R,caps){
+ const kind=REPORT_KIND_LABEL[R.kind]||R.kind;
+ const genDate=new Date().toLocaleString("en-US",{day:"2-digit",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"});
+ const sections=R.sections.map(s=>reportSection(s,caps)).join("");
+ return `<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>${esc(R.name)} — Clone Bench report</title>
+<style>${REPORT_CSS}</style>
+</head>
+<body>
+<div class="rpage">
+ <div class="rhead">
+  <div class="rkicker">CLONE BENCH · ${esc(kind.toUpperCase())} REPORT</div>
+  <h1>${esc(R.name)}</h1>
+  <div class="rmuted">Generated ${esc(genDate)}</div>
+ </div>
+ ${reportTiles(R)}
+ <section class="rsec">
+  <div class="rsech"><h2>What your data says</h2></div>
+  <div class="rflags">${reportFlags(R)}</div>
+ </section>
+ ${sections}
+ ${reportMethods(R)}
+ <p class="rdisclaimer">Interpretations are generated automatically from the numbers above and are meant to guide, not replace, expert review.</p>
+ <div class="rfoot">Clone Bench · created by Paul H. Kim, Ph.D.</div>
+</div>
+</body>
+</html>`}
+async function webReport(R){if(!R||!R.item)return;const done=busy("Building the report…");
+ try{const caps={};
+  for(const card of $$("#results article.card")){const id=card.dataset.id;if(!id)continue;const cap={};
+   const svg=card.querySelector(".cbody svg");
+   if(svg)cap.svgHtml=svgString(svg);
+   else if(card.__snap){try{cap.pngDataUrl=await card.__snap()}catch(e){console.warn("snapshot",id,e)}}
+   if(card.__tables)cap.tables=card.__tables();
+   if(!cap.svgHtml&&!cap.pngDataUrl){const co=card.querySelector(".calcout");if(co)cap.extraHtml=co.innerHTML}
+   caps[id]=cap}
+  download(reportFilename(R),buildReportHtml(R,caps),"text/html")
+ }catch(e){toast("Report: "+e.message)}finally{done()}}
+
 /* ------------------------------------------------------------------ settings */
 async function openSettings(){const cur=await (await fetch("/api/settings")).json();const m=el("div","modal");m.innerHTML=`<div class="box"><h3>Settings</h3>
  <label>Anthropic API key <input type="password" id="st_key" placeholder="${cur.has_key?"Saved ("+esc(cur.key_hint)+") — paste to replace":"sk-ant-…"}"></label>
@@ -1621,7 +1795,7 @@ $("#chatSend").onclick=send;$("#chatIn").addEventListener("keydown",e=>{if(e.key
 /* ------------------------------------------------------------------ boot */
 if(WEB){$$(".localonly").forEach(x=>x.hidden=true);$("#chat").hidden=true;$("#appWrap").hidden=true;
  $("#footNote").textContent="Browser build · computed in this tab";$(".hero .eyebrow").textContent="● Biopython · in your browser · for the bench";
- $("#webNote").hidden=false;$("#webNote").innerHTML=`<b>Browser version.</b> Everything here runs inside this tab with Biopython (via Pyodide) — nothing is uploaded. Your analyses are <b>saved in this browser</b> on this computer and reappear next time; download a copy to keep a backup or move them to another computer. The <b>assistant</b> and the <b>PDF report</b> are only in the desktop app. The first analysis downloads Python (~20 MB, cached afterwards).
+ $("#webNote").hidden=false;$("#webNote").innerHTML=`<b>Browser version.</b> Everything here runs inside this tab with Biopython (via Pyodide) — nothing is uploaded. Your analyses are <b>saved in this browser</b> on this computer and reappear next time; download a copy to keep a backup or move them to another computer. Any analysis page has a <b>Download report</b> button — a self-contained HTML file with the maps, tables and findings, viewable offline and ready to print to PDF. The <b>assistant</b> is only in the desktop app. The first analysis downloads Python (~20 MB, cached afterwards).
   <div class="webactions"><button class="btn ghost sm" id="saveDl" type="button">Download a copy</button><button class="btn ghost sm" id="saveOpen" type="button">Open a saved file</button><button class="btn ghost sm" id="saveClear" type="button">Clear this browser</button><input type="file" id="saveFile" accept=".json,application/json" hidden></div>`;
  $("#saveDl").onclick=savedDownload;$("#saveClear").onclick=savedClear;$("#saveOpen").onclick=()=>$("#saveFile").click();
  $("#saveFile").onchange=async e=>{const f=e.target.files[0];e.target.value="";if(f)await savedOpen(f)}}
