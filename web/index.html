@@ -1630,6 +1630,20 @@ setChips(null);
 function route(){const h=location.hash;const m=h.match(/item=([\w-]+)/),t=h.match(/tool=(\w+)/);
  if(m&&(!WEB||S.mem[m[1]]))loadItem(m[1]);else if(t&&["construct","primers","sanger","protein","seqtools"].includes(t[1]))goTool(t[1]);else if(!/^#(summary|map|features|restriction|digest|orfs|methods|read\d|coverage|props|a280|hydro|tags|structure|pair|pcr|rc|tr|motif|seguid)$/.test(h))show("home")}
 window.addEventListener("hashchange",route);
+
+/* This window is the app. Say we are here every few seconds, and hold a connection open, so that
+   closing the tab or window closes the app too (the rule is in server/lifecycle.py). The connection
+   drops the instant this window goes away, which is the one signal a browser cannot withhold — some
+   close a tab without ever firing the event below. A reload reconnects well inside the six seconds
+   the server waits, so reloading does not quit it. */
+if(!WEB && true){
+ const PAGE_ID=(self.crypto&&crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2));
+ let pageAlive=true;
+ const pingServer=()=>{if(pageAlive)fetch("/api/alive?page="+PAGE_ID,{method:"POST"}).catch(()=>{})};
+ pingServer();setInterval(pingServer,3000);
+ new EventSource("/api/window?page="+PAGE_ID);
+ addEventListener("pagehide",e=>{if(e.persisted)return;pageAlive=false;navigator.sendBeacon("/api/closing?page="+PAGE_ID)});
+}
 </script>
 </body>
 </html>

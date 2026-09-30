@@ -48,9 +48,11 @@ elif [ -n "$RUNNING_VER" ]; then
     exit 0
   fi
   log "An older Clone Bench (v$RUNNING_VER) is on port $PORT — stopping it."
-  lsof -ti tcp:"$PORT" 2>/dev/null | xargs kill 2>/dev/null
+  # only a process *listening* on the port: "lsof -ti tcp:$PORT" also matches the browser's own end of a
+  # connection to it, which after the app quits lingers for a while — killing that would close the browser
+  lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | xargs kill 2>/dev/null
   for _ in 1 2 3 4 5 6 7 8 9 10; do curl -s -m 1 "http://localhost:$PORT/api/settings" >/dev/null 2>&1 || break; sleep 1; done
-elif lsof -ti tcp:"$PORT" >/dev/null 2>&1; then
+elif lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then
   fail "Port $PORT is used by another program. Quit it, or start Clone Bench with a different port: PORT=8769 \"$0\""
 fi
 
@@ -126,27 +128,33 @@ if [ "${1:-}" = "--selftest" ]; then
 fi
 
 # ---- start the server
+# The server stops itself when the window that is its user interface goes away, and when this
+# launcher is gone (see server/lifecycle.py). Quitting the app from the Dock kills this process
+# with a signal no shell trap can catch, so the server watches the pid instead of being told.
 log "Starting server on port $PORT"
+export CB_LAUNCHER_PID=$$
 if [ "$MODE" = terminal ]; then
   echo ">> Starting http://localhost:$PORT  (leave this window open; press Ctrl+C to stop)"
   ( for _ in $(seq 1 60); do curl -s -m 1 "http://localhost:$PORT/api/settings" >/dev/null 2>&1 && { open "http://localhost:$PORT"; exit 0; }; sleep 1; done ) &
   exec "$VENV/bin/python" -m uvicorn server.app:app --port "$PORT" 2>&1 | tee -a "$LOG"
 fi
 
-# GUI mode: the server runs on its own in the background; this launcher exits once it is up.
-# Stop it from the sidebar ("Quit Clone Bench"), with "Stop Clone Bench.command", or leave it — it idles at no CPU.
-nohup "$VENV/bin/python" -m uvicorn server.app:app --port "$PORT" >>"$LOG" 2>&1 &
+# GUI mode: this launcher stays alive for as long as the server does, so Clone Bench is a real app in the
+# Dock — quit it there and the server goes with it. Closing the browser window stops it too; the
+# sidebar's "Quit Clone Bench" and "Stop Clone Bench.command" remain as ways to stop it by hand.
+"$VENV/bin/python" -m uvicorn server.app:app --port "$PORT" >>"$LOG" 2>&1 &
 SERVER=$!
-disown "$SERVER" 2>/dev/null
+trap 'kill "$SERVER" 2>/dev/null' EXIT INT TERM
 for _ in $(seq 1 60); do
   curl -s -m 1 "http://localhost:$PORT/api/settings" >/dev/null 2>&1 && break
   kill -0 "$SERVER" 2>/dev/null || break
   sleep 1
 done
 if ! curl -s -m 2 "http://localhost:$PORT/api/settings" >/dev/null 2>&1; then
-  kill "$SERVER" 2>/dev/null
   fail "The server did not start. The last lines of the log say why."
 fi
 open "http://localhost:$PORT"
 note "Running at http://localhost:$PORT"
+wait "$SERVER"
+log "Server stopped — Clone Bench has quit."
 exit 0

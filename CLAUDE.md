@@ -51,3 +51,18 @@ vanilla-JS UI + in-app Claude assistant + PDF report). Owner: Paul (bench biolog
 - `python tests/make_demo_reference.py` rebuilds `examples/demo_reference.{fasta,gb}`
 - `./build_mac.sh` → `../Clone Bench.app` + zip; `macos/make_icon.py` draws the icon from the logo geometry.
 - Bump `VERSION` + `CHANGELOG.md` for every change that ships; the launcher uses VERSION to replace a running older server.
+
+## Quitting (added 2026-09-30, ported from RNAseq Bench)
+`server/lifecycle.py`, tested by `tests/test_lifecycle.py`. Closing the window stops the app. The page holds
+`GET /api/window` (SSE) and posts `/api/alive` every 3 s; **the dropped connection is the signal that counts** —
+some browsers close a tab without firing `pagehide`, so the `sendBeacon` to `/api/closing` is a fallback, not the
+mechanism. Six seconds with nobody connected after a drop → quit; three minutes with nobody connected at all →
+quit; launcher pid (`CB_LAUNCHER_PID`) gone → quit. `CB_NO_AUTOQUIT=1` (dev.sh) turns it off. `launch.sh` in gui mode **waits on the
+server** so the app is a real Dock entry; do not put it back in the background.
+
+Two traps for anyone touching this:
+- A page's heartbeat must be dropped together with its channel (`window_closed`), or the next check clears the
+  "closing" flag and the six seconds silently become three minutes.
+- Find a server with `lsof -nP -iTCP:$PORT -sTCP:LISTEN -t`, never `lsof -ti tcp:$PORT`, which also matches the
+  browser's own end of the connection and lingers after the app quits — the app would refuse to start
+  ("Port 8768 is used by another program"), or pipe the browser's pid into `kill`.
