@@ -461,6 +461,8 @@ def build_demo_reference(ab1: dict) -> dict:
 
 
 def demo_reference_api(args):
+    if not args.get("file"):
+        raise UserFacingError("Upload a Sanger trace (.ab1) first: the demo reference is built from it.")
     d = build_demo_reference(args["file"])
     return d
 

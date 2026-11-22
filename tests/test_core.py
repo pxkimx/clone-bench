@@ -386,3 +386,8 @@ def test_design_sequencing_walk_covers_the_target():
         off = ((rd["from0"] - t["start0"] + L // 2) % L) - L // 2
         covered |= set(range(off, off + rd["len"]))
     assert set(range(t["length"])) <= covered
+
+
+def test_demo_reference_without_a_trace_is_a_message():
+    with pytest.raises(UserFacingError, match=r"\.ab1"):
+        api("demo_reference", {})

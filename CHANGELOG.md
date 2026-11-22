@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.5 — 2026-11-22
+- **The Light | Dark switch is reachable in a narrow window.** Below 900 px wide — which includes the frame
+  Toolbox Launcher shows the app in — the sidebar folds into a bar and hid its footer, with the switch inside it.
+  The switch now has its own place in that bar (as in RNAseq Bench).
+- **A friendlier error from the Sanger demo.** Asking for the demo reference without a trace file gave an
+  internal error (500); it now says to upload an .ab1 first (400).
+
 ## 0.2.4 — 2026-10-07
 - **Light | Dark switch.** A two-way pill with sun and moon icons at the bottom of the sidebar replaces the single
   toggle button. The lit half shows the theme in use: your choice, or the Mac's own setting until you pick one. The
